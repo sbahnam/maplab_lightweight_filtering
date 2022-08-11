@@ -105,8 +105,8 @@ class UpdateExample: public LWF::Update<Innovation,FilterState,UpdateMeas,Update
   };
   virtual ~UpdateExample(){};
   void evalInnovation(mtInnovation& inn, const mtState& state, const mtNoise& noise) const{
-    inn.get<Innovation::POS>() = state.get<State::ATT>().rotate(state.get<State::POS>())-meas_.get<UpdateMeas::POS>()+noise.get<UpdateNoise::POS>();
-    inn.get<Innovation::ATT>() = (state.get<State::ATT>()*meas_.get<UpdateMeas::ATT>().inverted()).boxPlus(noise.get<UpdateNoise::ATT>());
+    inn.get<Innovation::POS>() = state.get<State::ATT>().rotate(state.get<State::POS>())-meas_->get<UpdateMeas::POS>()+noise.get<UpdateNoise::POS>();
+    inn.get<Innovation::ATT>() = (state.get<State::ATT>()*meas_->get<UpdateMeas::ATT>().inverted()).boxPlus(noise.get<UpdateNoise::ATT>());
   }
   void jacState(Eigen::MatrixXd& J, const mtState& state) const{
     mtInnovation inn;
@@ -134,11 +134,11 @@ class PredictionExample: public LWF::Prediction<FilterState>{
   virtual ~PredictionExample(){};
   void evalPrediction(mtState& output, const mtState& state, const mtNoise& noise, double dt) const{
     V3D g_(0,0,-9.81);
-    V3D dOmega = dt*(meas_.get<PredictionMeas::GYR>()-state.get<State::GYB>()-noise.get<PredictionNoise::ATT>()/sqrt(dt));
+    V3D dOmega = dt*(meas_->get<PredictionMeas::GYR>()-state.get<State::GYB>()-noise.get<PredictionNoise::ATT>()/sqrt(dt));
     QPD dQ = dQ.exponentialMap(dOmega);
     output.get<State::POS>() = state.get<State::POS>()+dt*state.get<State::ATT>().rotate(V3D(state.get<State::VEL>()+noise.get<PredictionNoise::POS>()/sqrt(dt)));
     output.get<State::VEL>() = (M3D::Identity()-gSM(dOmega))*state.get<State::VEL>()
-        +dt*(meas_.get<PredictionMeas::ACC>()-state.get<State::ACB>()+state.get<State::ATT>().inverseRotate(g_)-noise.get<PredictionNoise::VEL>()/sqrt(dt));
+        +dt*(meas_->get<PredictionMeas::ACC>()-state.get<State::ACB>()+state.get<State::ATT>().inverseRotate(g_)-noise.get<PredictionNoise::VEL>()/sqrt(dt));
     output.get<State::ACB>() = state.get<State::ACB>()+noise.get<PredictionNoise::ACB>()*sqrt(dt);
     output.get<State::GYB>() = state.get<State::GYB>()+noise.get<PredictionNoise::GYB>()*sqrt(dt);
     output.get<State::ATT>() = state.get<State::ATT>()*dQ;
@@ -146,7 +146,7 @@ class PredictionExample: public LWF::Prediction<FilterState>{
   }
   void jacPreviousState(Eigen::MatrixXd& J, const mtState& state, double dt) const{
     V3D g_(0,0,-9.81);
-    V3D dOmega = dt*(meas_.get<PredictionMeas::GYR>()-state.get<State::GYB>());
+    V3D dOmega = dt*(meas_->get<PredictionMeas::GYR>()-state.get<State::GYB>());
     J.setZero();
     J.template block<3,3>(mtState::getId<State::POS>(),mtState::getId<State::POS>()) = M3D::Identity();
     J.template block<3,3>(mtState::getId<State::POS>(),mtState::getId<State::VEL>()) = dt*MPD(state.get<State::ATT>()).matrix();
@@ -163,7 +163,7 @@ class PredictionExample: public LWF::Prediction<FilterState>{
   void jacNoise(Eigen::MatrixXd& J, const mtState& state, double dt) const{
     mtNoise noise;
     V3D g_(0,0,-9.81);
-    V3D dOmega = dt*(meas_.get<PredictionMeas::GYR>()-state.get<State::GYB>());
+    V3D dOmega = dt*(meas_->get<PredictionMeas::GYR>()-state.get<State::GYB>());
     J.setZero();
     J.template block<3,3>(mtState::getId<State::POS>(),mtNoise::getId<mtNoise::POS>()) = MPD(state.get<State::ATT>()).matrix()*sqrt(dt);
     J.template block<3,3>(mtState::getId<State::VEL>(),mtNoise::getId<mtNoise::VEL>()) = -M3D::Identity()*sqrt(dt);
@@ -185,8 +185,8 @@ class PredictAndUpdateExample: public LWF::Update<Innovation,FilterState,UpdateM
   };
   virtual ~PredictAndUpdateExample(){};
   void evalInnovation(mtInnovation& inn, const mtState& state, const mtNoise& noise) const{
-    inn.get<Innovation::POS>() = state.get<State::ATT>().rotate(state.get<State::POS>())-meas_.get<UpdateMeas::POS>()+noise.get<UpdateNoise::POS>();
-    inn.get<Innovation::ATT>() = (state.get<State::ATT>()*meas_.get<UpdateMeas::ATT>().inverted()).boxPlus(noise.get<UpdateNoise::ATT>());
+    inn.get<Innovation::POS>() = state.get<State::ATT>().rotate(state.get<State::POS>())-meas_->get<UpdateMeas::POS>()+noise.get<UpdateNoise::POS>();
+    inn.get<Innovation::ATT>() = (state.get<State::ATT>()*meas_->get<UpdateMeas::ATT>().inverted()).boxPlus(noise.get<UpdateNoise::ATT>());
   }
   void jacState(Eigen::MatrixXd& J, const mtState& state) const{
     mtInnovation inn;
@@ -233,17 +233,17 @@ class GIFPredictionExample: public LWF::GIFPrediction<FilterState,GIFInnovation,
   };
   virtual ~GIFPredictionExample(){};
   void evalResidual(mtInnovation& inn, const mtState& state0, const mtState& state1, const mtNoise& noise, double dt) const{
-    V3D dOmega = dt*(meas_.get<PredictionMeas::GYR>()-state0.get<State::GYB>()-noise.get<PredictionNoise::ATT>()/sqrt(dt));
+    V3D dOmega = dt*(meas_->get<PredictionMeas::GYR>()-state0.get<State::GYB>()-noise.get<PredictionNoise::ATT>()/sqrt(dt));
     inn.get<mtInnovation::POS>() = (state1.get<State::POS>() - state0.get<State::POS>())/dt - state0.get<State::ATT>().rotate(V3D(state0.get<State::VEL>() + noise.get<PredictionNoise::POS>()/sqrt(dt)));
     inn.get<mtInnovation::VEL>() = (state1.get<State::VEL>() - (M3D::Identity()-gSM(dOmega))*state0.get<State::VEL>())/dt
-        - (meas_.get<PredictionMeas::ACC>()-state0.get<State::ACB>()+state0.get<State::ATT>().inverseRotate(g_) - noise.get<PredictionNoise::VEL>()/sqrt(dt));
+        - (meas_->get<PredictionMeas::ACC>()-state0.get<State::ACB>()+state0.get<State::ATT>().inverseRotate(g_) - noise.get<PredictionNoise::VEL>()/sqrt(dt));
     inn.get<mtInnovation::ACB>() = (state1.get<State::ACB>() - state0.get<State::ACB>())/dt + noise.get<PredictionNoise::ACB>()/sqrt(dt);
     inn.get<mtInnovation::GYB>() = (state1.get<State::GYB>() - state0.get<State::GYB>())/dt + noise.get<PredictionNoise::GYB>()/sqrt(dt);
     inn.get<mtInnovation::ATT>() = (state0.get<State::ATT>().inverted()*state1.get<State::ATT>()).logarithmicMap()/dt - dOmega/dt;
   }
   void jacPreviousState(Eigen::MatrixXd& F, const mtState& previousState, const mtState& currentState, double dt) const{
     F.setZero();
-    V3D dOmega = -dt*(meas_.get<PredictionMeas::GYR>()-previousState.get<State::GYB>());
+    V3D dOmega = -dt*(meas_->get<PredictionMeas::GYR>()-previousState.get<State::GYB>());
     F.template block<3,3>(mtInnovation::getId<mtInnovation::POS>(),mtState::getId<State::POS>()) = -M3D::Identity()/dt;
     F.template block<3,3>(mtInnovation::getId<mtInnovation::POS>(),mtState::getId<State::VEL>()) = -MPD(previousState.get<State::ATT>()).matrix();
     F.template block<3,3>(mtInnovation::getId<mtInnovation::POS>(),mtState::getId<State::ATT>()) = gSM(V3D(previousState.get<State::ATT>().rotate(V3D(previousState.get<State::VEL>()))));
@@ -266,7 +266,7 @@ class GIFPredictionExample: public LWF::GIFPrediction<FilterState,GIFInnovation,
   }
   void jacNoise(Eigen::MatrixXd& F, const mtState& previousState, const mtState& currentState, double dt) const{
     F.setZero();
-    V3D dOmega = -dt*(meas_.get<PredictionMeas::GYR>()-previousState.get<State::GYB>());
+    V3D dOmega = -dt*(meas_->get<PredictionMeas::GYR>()-previousState.get<State::GYB>());
     F.template block<3,3>(mtInnovation::getId<mtInnovation::POS>(),mtNoise::getId<mtNoise::POS>()) = -MPD(previousState.get<State::ATT>()).matrix()/sqrt(dt);
     F.template block<3,3>(mtInnovation::getId<mtInnovation::VEL>(),mtNoise::getId<mtNoise::VEL>()) = M3D::Identity()/sqrt(dt);
     F.template block<3,3>(mtInnovation::getId<mtInnovation::VEL>(),mtNoise::getId<mtNoise::ATT>()) = gSM(previousState.get<State::VEL>())/sqrt(dt);
@@ -275,11 +275,11 @@ class GIFPredictionExample: public LWF::GIFPrediction<FilterState,GIFInnovation,
     F.template block<3,3>(mtInnovation::getId<mtInnovation::ATT>(),mtNoise::getId<mtNoise::ATT>()) = M3D::Identity()/sqrt(dt);
   }
   void getLinearizationPoint(mtState& currentState, const mtFilterState& filterState, const mtMeas& meas, double dt){
-    V3D dOmega = dt*(meas_.get<PredictionMeas::GYR>()-filterState.state_.get<State::GYB>());
+    V3D dOmega = dt*(meas_->get<PredictionMeas::GYR>()-filterState.state_.get<State::GYB>());
     QPD dQ = dQ.exponentialMap(dOmega);
     currentState.get<State::POS>() = filterState.state_.get<State::POS>()+dt*filterState.state_.get<State::ATT>().rotate(filterState.state_.get<State::VEL>());
     currentState.get<State::VEL>() = (M3D::Identity()-gSM(dOmega))*filterState.state_.get<State::VEL>()
-        +dt*(meas_.get<PredictionMeas::ACC>()-filterState.state_.get<State::ACB>()+filterState.state_.get<State::ATT>().inverseRotate(g_));
+        +dt*(meas_->get<PredictionMeas::ACC>()-filterState.state_.get<State::ACB>()+filterState.state_.get<State::ATT>().inverseRotate(g_));
     currentState.get<State::ACB>() = filterState.state_.get<State::ACB>();
     currentState.get<State::GYB>() = filterState.state_.get<State::GYB>();
     currentState.get<State::ATT>() = filterState.state_.get<State::ATT>()*dQ;
@@ -346,19 +346,19 @@ class GIFPredictionExampleWithUpdate: public LWF::GIFPrediction<FilterState,GIFI
   };
   virtual ~GIFPredictionExampleWithUpdate(){};
   void evalResidual(mtInnovation& inn, const mtState& state0, const mtState& state1, const mtNoise& noise, double dt) const{
-    V3D dOmega = dt*(meas_.get<PredictionMeas::GYR>()-state0.get<State::GYB>()-noise.get<PredictionNoise::ATT>()/sqrt(dt));
+    V3D dOmega = dt*(meas_->get<PredictionMeas::GYR>()-state0.get<State::GYB>()-noise.get<PredictionNoise::ATT>()/sqrt(dt));
     inn.get<mtInnovation::POS>() = (state1.get<State::POS>() - state0.get<State::POS>())/dt - state0.get<State::ATT>().rotate(V3D(state0.get<State::VEL>() + noise.get<PredictionNoise::POS>()/sqrt(dt)));
     inn.get<mtInnovation::VEL>() = (state1.get<State::VEL>() - (M3D::Identity()-gSM(dOmega))*state0.get<State::VEL>())/dt
-        - (meas_.get<PredictionMeas::ACC>()-state0.get<State::ACB>()+state0.get<State::ATT>().inverseRotate(g_) - noise.get<PredictionNoise::VEL>()/sqrt(dt));
+        - (meas_->get<PredictionMeas::ACC>()-state0.get<State::ACB>()+state0.get<State::ATT>().inverseRotate(g_) - noise.get<PredictionNoise::VEL>()/sqrt(dt));
     inn.get<mtInnovation::ACB>() = (state1.get<State::ACB>() - state0.get<State::ACB>())/dt + noise.get<PredictionNoise::ACB>()/sqrt(dt);
     inn.get<mtInnovation::GYB>() = (state1.get<State::GYB>() - state0.get<State::GYB>())/dt + noise.get<PredictionNoise::GYB>()/sqrt(dt);
     inn.get<mtInnovation::ATT>() = (state0.get<State::ATT>().inverted()*state1.get<State::ATT>()).logarithmicMap()/dt - dOmega/dt;
-    inn.get<mtInnovation::POSU>() = state1.get<State::ATT>().rotate(state1.get<State::POS>())-meas_.get<mtMeas::POS>()+noise.get<mtNoise::POSU>();
-    inn.get<mtInnovation::ATTU>() = (state1.get<State::ATT>()*meas_.get<mtMeas::ATT>().inverted()).boxPlus(noise.get<mtNoise::ATTU>());
+    inn.get<mtInnovation::POSU>() = state1.get<State::ATT>().rotate(state1.get<State::POS>())-meas_->get<mtMeas::POS>()+noise.get<mtNoise::POSU>();
+    inn.get<mtInnovation::ATTU>() = (state1.get<State::ATT>()*meas_->get<mtMeas::ATT>().inverted()).boxPlus(noise.get<mtNoise::ATTU>());
   }
   void jacPreviousState(Eigen::MatrixXd& F, const mtState& previousState, const mtState& currentState, double dt) const{
     F.setZero();
-    V3D dOmega = -dt*(meas_.get<PredictionMeas::GYR>()-previousState.get<State::GYB>());
+    V3D dOmega = -dt*(meas_->get<PredictionMeas::GYR>()-previousState.get<State::GYB>());
     F.template block<3,3>(mtInnovation::getId<mtInnovation::POS>(),mtState::getId<State::POS>()) = -M3D::Identity()/dt;
     F.template block<3,3>(mtInnovation::getId<mtInnovation::POS>(),mtState::getId<State::VEL>()) = -MPD(previousState.get<State::ATT>()).matrix();
     F.template block<3,3>(mtInnovation::getId<mtInnovation::POS>(),mtState::getId<State::ATT>()) = gSM(V3D(previousState.get<State::ATT>().rotate(V3D(previousState.get<State::VEL>()))));
@@ -384,7 +384,7 @@ class GIFPredictionExampleWithUpdate: public LWF::GIFPrediction<FilterState,GIFI
   }
   void jacNoise(Eigen::MatrixXd& F, const mtState& previousState, const mtState& currentState, double dt) const{
     F.setZero();
-    V3D dOmega = -dt*(meas_.get<PredictionMeas::GYR>()-previousState.get<State::GYB>());
+    V3D dOmega = -dt*(meas_->get<PredictionMeas::GYR>()-previousState.get<State::GYB>());
     F.template block<3,3>(mtInnovation::getId<mtInnovation::POS>(),mtNoise::getId<mtNoise::POS>()) = -MPD(previousState.get<State::ATT>()).matrix()/sqrt(dt);
     F.template block<3,3>(mtInnovation::getId<mtInnovation::VEL>(),mtNoise::getId<mtNoise::VEL>()) = M3D::Identity()/sqrt(dt);
     F.template block<3,3>(mtInnovation::getId<mtInnovation::VEL>(),mtNoise::getId<mtNoise::ATT>()) = gSM(previousState.get<State::VEL>())/sqrt(dt);
@@ -395,11 +395,11 @@ class GIFPredictionExampleWithUpdate: public LWF::GIFPrediction<FilterState,GIFI
     F.template block<3,3>(mtInnovation::getId<mtInnovation::ATTU>(),mtNoise::getId<mtNoise::ATTU>()) = M3D::Identity();
   }
   void getLinearizationPoint(mtState& currentState, const mtFilterState& filterState, const mtMeas& meas, double dt){
-    V3D dOmega = dt*(meas_.get<PredictionMeas::GYR>()-filterState.state_.get<State::GYB>());
+    V3D dOmega = dt*(meas_->get<PredictionMeas::GYR>()-filterState.state_.get<State::GYB>());
     QPD dQ = dQ.exponentialMap(dOmega);
     currentState.get<State::POS>() = filterState.state_.get<State::POS>()+dt*filterState.state_.get<State::ATT>().rotate(filterState.state_.get<State::VEL>());
     currentState.get<State::VEL>() = (M3D::Identity()-gSM(dOmega))*filterState.state_.get<State::VEL>()
-        +dt*(meas_.get<PredictionMeas::ACC>()-filterState.state_.get<State::ACB>()+filterState.state_.get<State::ATT>().inverseRotate(g_));
+        +dt*(meas_->get<PredictionMeas::ACC>()-filterState.state_.get<State::ACB>()+filterState.state_.get<State::ATT>().inverseRotate(g_));
     currentState.get<State::ACB>() = filterState.state_.get<State::ACB>();
     currentState.get<State::GYB>() = filterState.state_.get<State::GYB>();
     currentState.get<State::ATT>() = filterState.state_.get<State::ATT>()*dQ;
@@ -486,8 +486,8 @@ class UpdateExample: public LWF::Update<Innovation,FilterState,UpdateMeas,Update
   };
   virtual ~UpdateExample(){};
   void evalInnovation(mtInnovation& inn, const mtState& state, const mtNoise& noise) const{
-    inn.get<Innovation::POS>() = state.get<State::POS>()-meas_.get<UpdateMeas::POS>()+noise.get<UpdateNoise::POS>();
-    inn.get<Innovation::HEI>() = V3D(0,0,1).dot(state.get<State::POS>())-meas_.get<UpdateMeas::HEI>()+noise.get<UpdateNoise::HEI>();
+    inn.get<Innovation::POS>() = state.get<State::POS>()-meas_->get<UpdateMeas::POS>()+noise.get<UpdateNoise::POS>();
+    inn.get<Innovation::HEI>() = V3D(0,0,1).dot(state.get<State::POS>())-meas_->get<UpdateMeas::HEI>()+noise.get<UpdateNoise::HEI>();
   }
   void jacState(Eigen::MatrixXd& J, const mtState& state) const{
     mtInnovation inn;
@@ -514,7 +514,7 @@ class PredictionExample: public LWF::Prediction<FilterState>{
   virtual ~PredictionExample(){};
   void evalPrediction(mtState& output, const mtState& state, const mtNoise& noise, double dt) const{
     output.get<mtState::POS>() = state.get<mtState::POS>()+dt*state.get<mtState::VEL>()+noise.get<PredictionNoise::VEL>()*sqrt(dt);
-    output.get<mtState::VEL>() = state.get<mtState::VEL>()+dt*meas_.get<mtMeas::ACC>()+noise.get<PredictionNoise::ACC>()*sqrt(dt);
+    output.get<mtState::VEL>() = state.get<mtState::VEL>()+dt*meas_->get<mtMeas::ACC>()+noise.get<PredictionNoise::ACC>()*sqrt(dt);
   }
   void jacPreviousState(Eigen::MatrixXd& J, const mtState& state, double dt) const{
     J.setZero();
@@ -540,8 +540,8 @@ class PredictAndUpdateExample: public LWF::Update<Innovation,FilterState,UpdateM
   };
   virtual ~PredictAndUpdateExample(){};
   void evalInnovation(mtInnovation& inn, const mtState& state, const mtNoise& noise) const{
-    inn.get<Innovation::POS>() = state.get<State::POS>()-meas_.get<UpdateMeas::POS>()+noise.get<UpdateNoise::POS>();
-    inn.get<Innovation::HEI>() = V3D(0,0,1).dot(state.get<State::POS>())-meas_.get<UpdateMeas::HEI>()+noise.get<UpdateNoise::HEI>();
+    inn.get<Innovation::POS>() = state.get<State::POS>()-meas_->get<UpdateMeas::POS>()+noise.get<UpdateNoise::POS>();
+    inn.get<Innovation::HEI>() = V3D(0,0,1).dot(state.get<State::POS>())-meas_->get<UpdateMeas::HEI>()+noise.get<UpdateNoise::HEI>();
   }
   void jacState(Eigen::MatrixXd& J, const mtState& state) const{
     mtInnovation inn;
@@ -578,7 +578,7 @@ class GIFPredictionExample: public LWF::GIFPrediction<FilterState,GIFInnovation,
   virtual ~GIFPredictionExample(){};
   void evalResidual(mtInnovation& inn, const mtState& state0, const mtState& state1, const mtNoise& noise, double dt) const{
     inn.get<mtInnovation::VEL>() = (state1.get<mtState::POS>() - state0.get<mtState::POS>())/dt - state0.get<mtState::VEL>() + noise.get<PredictionNoise::VEL>()/sqrt(dt);
-    inn.get<mtInnovation::ACC>() = (state1.get<mtState::VEL>() - state0.get<mtState::VEL>())/dt - meas_.get<mtMeas::ACC>() + noise.get<PredictionNoise::ACC>()/sqrt(dt);
+    inn.get<mtInnovation::ACC>() = (state1.get<mtState::VEL>() - state0.get<mtState::VEL>())/dt - meas_->get<mtMeas::ACC>() + noise.get<PredictionNoise::ACC>()/sqrt(dt);
   }
   void jacPreviousState(Eigen::MatrixXd& F, const mtState& previousState, const mtState& currentState, double dt) const{
     F.setZero();
@@ -642,9 +642,9 @@ class GIFPredictionExampleWithUpdate: public LWF::GIFPrediction<FilterState,GIFI
   virtual ~GIFPredictionExampleWithUpdate(){};
   void evalResidual(mtInnovation& inn, const mtState& state0, const mtState& state1, const mtNoise& noise, double dt) const{
     inn.get<mtInnovation::VEL>() = (state1.get<mtState::POS>() - state0.get<mtState::POS>())/dt - state0.get<mtState::VEL>() + noise.get<mtNoise::VEL>()/sqrt(dt);
-    inn.get<mtInnovation::ACC>() = (state1.get<mtState::VEL>() - state0.get<mtState::VEL>())/dt - meas_.get<mtMeas::ACC>() + noise.get<mtNoise::ACC>()/sqrt(dt);
-    inn.get<mtInnovation::POS>() = state1.get<State::POS>()-meas_.get<mtMeas::POS>()+noise.get<mtNoise::POS>();
-    inn.get<mtInnovation::HEI>() = V3D(0,0,1).dot(state1.get<State::POS>())-meas_.get<mtMeas::HEI>()+noise.get<mtNoise::HEI>();
+    inn.get<mtInnovation::ACC>() = (state1.get<mtState::VEL>() - state0.get<mtState::VEL>())/dt - meas_->get<mtMeas::ACC>() + noise.get<mtNoise::ACC>()/sqrt(dt);
+    inn.get<mtInnovation::POS>() = state1.get<State::POS>()-meas_->get<mtMeas::POS>()+noise.get<mtNoise::POS>();
+    inn.get<mtInnovation::HEI>() = V3D(0,0,1).dot(state1.get<State::POS>())-meas_->get<mtMeas::HEI>()+noise.get<mtNoise::HEI>();
   }
   void jacPreviousState(Eigen::MatrixXd& F, const mtState& previousState, const mtState& currentState, double dt) const{
     F.setZero();

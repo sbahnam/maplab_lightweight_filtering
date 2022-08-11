@@ -12,6 +12,9 @@
 #include "lightweight_filtering/ModelBase.hpp"
 #include "lightweight_filtering/PropertyHandler.hpp"
 
+#define CHECK_COV_PREDICTION_MATRICES
+
+
 namespace LWF{
 
 template<typename FilterState>
@@ -26,10 +29,19 @@ class Prediction: public ModelBase<Prediction<FilterState>,typename FilterState:
   typedef typename mtFilterState::mtPredictionNoise mtNoise;
   mtMeas meas_;
   Eigen::MatrixXd prenoiP_;
+  Eigen::MatrixXd GprenoiP_G;
+  Eigen::MatrixXd Fcov;
+  Eigen::MatrixXd FcovF;
   Eigen::MatrixXd prenoiPinv_;
   bool disablePreAndPostProcessingWarning_;
   Prediction(): prenoiP_((int)(mtNoise::D_),(int)(mtNoise::D_)),
+                GprenoiP_G((int)(mtNoise::D_),(int)(mtNoise::D_)),
+                Fcov((int)(mtNoise::D_),(int)(mtNoise::D_)),
+                FcovF((int)(mtNoise::D_),(int)(mtNoise::D_)),
                 prenoiPinv_((int)(mtNoise::D_),(int)(mtNoise::D_)){
+    GprenoiP_G.setZero();
+    Fcov.setZero();
+    FcovF.setZero();
     prenoiP_.setIdentity();
     prenoiP_ *= 0.0001;
     mtNoise n;
@@ -165,7 +177,77 @@ class Prediction: public ModelBase<Prediction<FilterState>,typename FilterState:
       this->evalPredictionShort(filterState.state_,filterState.state_,std::min(itMeas->first,tTarget)-filterState.t_);
       filterState.t_ = std::min(itMeas->first,tTarget);
     }
-    filterState.cov_ = filterState.F_*filterState.cov_*filterState.F_.transpose() + filterState.G_*prenoiP_*filterState.G_.transpose();
+
+    //@todo: use template block
+    GprenoiP_G = filterState.G_.block(0,12, filterState.G_.rows(),3)*prenoiP_.block(12,12, 3,3)*(filterState.G_.block(0,12, filterState.G_.rows(),3)).transpose();
+    GprenoiP_G.block(0,0,12,12).diagonal() += (filterState.G_.block(0,0,12,12).diagonal().cwiseProduct(prenoiP_.block(0,0,12,12).diagonal())).cwiseProduct(filterState.G_.block(0,0,12,12).diagonal());
+    GprenoiP_G.block(15,15,6,6).diagonal() += (filterState.G_.block(15,15,6,6).diagonal().cwiseProduct(prenoiP_.block(15,15,6,6).diagonal())).cwiseProduct(filterState.G_.block(15,15,6,6).diagonal());
+   
+    for (int i=0; i<25; i++)
+    {
+      GprenoiP_G.block(21+3*i,21+3*i, 3,3) += filterState.G_.block(21+3*i, 21+3*i, 3, 3) * prenoiP_.block(21+3*i, 21+3*i, 3, 3) * filterState.G_.block(21+3*i, 21+3*i, 3, 3).transpose();
+    }
+
+
+    Fcov.block(0,0, 6,96) = filterState.F_.block(0, 3, 6, 12) * filterState.cov_.block(3, 0, 12, 96);
+    Fcov.block(0,0, 3,96) += filterState.cov_.block(0, 0, 3, 96);
+    Fcov.block(6,0, 15,96) = filterState.cov_.block(6, 0, 15, 96);
+    Fcov.block(12,0, 3,96) += filterState.F_.block(12, 9, 3, 3) * filterState.cov_.block(9, 0, 3, 96);
+    Fcov.block(21,0, 75,96) = filterState.F_.block(21, 3, 75, 3) * filterState.cov_.block(3, 0, 3, 96);
+    Fcov.block(21,0, 75,96) += filterState.F_.block(21, 9, 75, 3) * filterState.cov_.block(9, 0, 3, 96);
+    Fcov.block(21,0, 75,96) += filterState.F_.block(21, 15, 75, 6) * filterState.cov_.block(15, 0, 6, 96);
+
+    for (int i=0; i<25; i++)
+    {
+      Fcov.block(21+3*i,0, 3,96) += filterState.F_.block(21+3*i, 21+3*i, 3, 3) * filterState.cov_.block(21+3*i, 0, 3, 96);
+    }
+
+    // // calc Fcov * F
+    // FcovF.block(0,0, 96,3) = Fcov.block(0,0, 96,3);
+    FcovF.block(0,0, 96, 6) =  Fcov.block(0,0, 96, 15) * filterState.F_.block(0, 0, 6, 15).transpose();
+    FcovF.block(0,6, 96, 15) = Fcov.block(0, 6, 96, 15);
+    FcovF.block(0,12, 96, 3) +=  Fcov.block(0,9, 96, 3) * filterState.F_.block(12,9, 3,3).transpose();
+    FcovF.block(0,21, 96, 75) =  Fcov.block(0,3, 96, 3) * filterState.F_.block(21,3, 75,3).transpose();
+    FcovF.block(0,21, 96, 75) +=  Fcov.block(0,9, 96, 3) * filterState.F_.block(21, 9, 75, 3).transpose();
+    FcovF.block(0,21, 96, 75) +=  Fcov.block(0,15, 96, 6) * filterState.F_.block(21, 15, 75, 6).transpose();
+
+
+    for (int i=0; i<25; i++)
+    {
+      FcovF.block(0, 21+3*i, 96,3) += Fcov.block(0, 21+3*i, 96, 3) * filterState.F_.block(21+3*i, 21+3*i, 3,3).transpose();
+    }
+
+
+    #ifdef CHECK_COV_PREDICTION_MATRICES
+      bool GpG = GprenoiP_G.isApprox(filterState.G_*prenoiP_*filterState.G_.transpose(), 1e-12);
+      bool FcF = FcovF.isApprox(filterState.F_*filterState.cov_*filterState.F_.transpose(), 1e-12);
+      Eigen::MatrixXd test = FcovF + GprenoiP_G;
+      bool predcov =  test.isApprox(filterState.F_*filterState.cov_*filterState.F_.transpose() + filterState.G_*prenoiP_*filterState.G_.transpose(), 1e-12);
+      if (!GpG)
+      {
+        std::cout<<"Gpg is not the same!"<<std::endl;
+        std::cout<<GprenoiP_G<<std::endl<<std::endl;
+        std::cout<<filterState.G_*prenoiP_*filterState.G_.transpose()<<std::endl<<std::endl;
+
+      }
+      if (!FcF)
+      {
+        std::cout<<"FcF is not the same!"<<std::endl;
+        std::cout<<FcovF - filterState.F_*filterState.cov_*filterState.F_.transpose()<<std::endl<<std::endl;
+        std::cout<<filterState.F_<<std::endl<<std::endl;
+      } 
+
+      if (!predcov) std::cout<<"Prediction cov not the same!"<<std::endl;
+
+    #endif
+
+
+    // filterState.cov_ = filterState.F_*filterState.cov_*filterState.F_.transpose() + filterState.G_*prenoiP_*filterState.G_.transpose();
+    // filterState.cov_ = FcovF + filterState.G_*prenoiP_*filterState.G_.transpose();
+    //  filterState.cov_ = filterState.F_*filterState.cov_*filterState.F_.transpose() + GprenoiP_G;
+    filterState.cov_ = FcovF +GprenoiP_G;
+
+
     filterState.state_.fix();
     enforceSymmetry(filterState.cov_);
     filterState.t_ = std::min(std::prev(itMeasEnd)->first,tTarget);
