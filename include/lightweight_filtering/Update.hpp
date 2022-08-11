@@ -11,6 +11,7 @@
 #include <iostream>
 #include <fstream>
 // #define UPDATELOG
+// #define UPDATELOG_PER_FRAME
 #define CHECK_UPDATE_MATRICES
 
 #include "lightweight_filtering/common.hpp"
@@ -38,7 +39,6 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
   typedef Meas mtMeas;
   typedef Noise mtNoise;
   typedef OutlierDetection mtOutlierDetection;
-  // mtMeas meas_; // TODO change to pointer, or remove
   const mtMeas * meas_;
   static const bool coupledToPrediction_ = isCoupled;
   bool useSpecialLinearizationPoint_;
@@ -191,22 +191,30 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
   int performUpdate(mtFilterState& filterState, const mtMeas& meas){
     bool isFinished = true;
     int r = 0;
-    // int features_count = 0;
-    // double T_preprocess = 0;
-    // double T_IEKF = 0;
-    // double T_post = 0;
-    // double T_fix = 0;
-    // double T_sym = 0;
+    #ifdef UPDATELOG_PER_FRAME
+      int features_count = 0;
+      double T_preprocess = 0;
+      double T_IEKF = 0;
+      double T_post = 0;
+      double T_fix = 0;
+      double T_sym = 0;
+    #endif
     meas_ =  &meas;
     do {
-      // const double t1 = (double) cv::getTickCount();
+      #ifdef UPDATELOG_PER_FRAME
+        const double t1 = (double) cv::getTickCount();
+      #endif
       preProcess(filterState,meas,isFinished);
-      // const double t2 = (double) cv::getTickCount();
-      // T_preprocess += (t2-t1)/cv::getTickFrequency()*1000;
-      // double t3;
-      // double t4;
+      #ifdef UPDATELOG_PER_FRAME
+        const double t2 = (double) cv::getTickCount();
+        T_preprocess += (t2-t1)/cv::getTickFrequency()*1000;
+        double t3;
+        double t4;
+      #endif
       if(!isFinished){
-        // features_count++;
+        #ifdef UPDATELOG_PER_FRAME
+          features_count++;
+        #endif
         switch(filterState.mode_){
           case ModeEKF:
             r = performUpdateEKF(filterState,meas);
@@ -215,45 +223,58 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
             r = performUpdateUKF(filterState,meas);
             break;
           case ModeIEKF:
-            // t3 = (double) cv::getTickCount();
+            #ifdef UPDATELOG_PER_FRAME
+              t3 = (double) cv::getTickCount();
+            #endif
             r = performUpdateIEKF(filterState,meas);
-            // t4 = (double) cv::getTickCount();
-            // T_IEKF += (t4-t3)/cv::getTickFrequency()*1000;
+            #ifdef UPDATELOG_PER_FRAME
+              t4 = (double) cv::getTickCount();
+              T_IEKF += (t4-t3)/cv::getTickFrequency()*1000;
+            #endif
             break;
           default:
             r = performUpdateEKF(filterState,meas);
             break;
         }
       }
-      // const double t5 = (double) cv::getTickCount();
+      #ifdef UPDATELOG_PER_FRAME
+        const double t5 = (double) cv::getTickCount();
+      #endif
       postProcess(filterState,meas,outlierDetection_,isFinished);
-      // const double t6 = (double) cv::getTickCount();
+      #ifdef UPDATELOG_PER_FRAME
+        const double t6 = (double) cv::getTickCount();
+      #endif
       filterState.state_.fix();
-      // const double t7 = (double) cv::getTickCount();
+      #ifdef UPDATELOG_PER_FRAME
+        const double t7 = (double) cv::getTickCount();
+      #endif
       enforceSymmetry(filterState.cov_);
-      // const double t8 = (double) cv::getTickCount();
-      // T_post += (t6-t5)/cv::getTickFrequency()*1000;
-      // T_fix += (t7-t6)/cv::getTickFrequency()*1000;
-      // T_sym += (t8-t7)/cv::getTickFrequency()*1000;
+      #ifdef UPDATELOG_PER_FRAME
+        const double t8 = (double) cv::getTickCount();
+        T_post += (t6-t5)/cv::getTickFrequency()*1000;
+        T_fix += (t7-t6)/cv::getTickFrequency()*1000;
+        T_sym += (t8-t7)/cv::getTickFrequency()*1000;
+      #endif
     } while (!isFinished);
-
-    // double T_total= T_preprocess + T_IEKF + T_post + T_fix + T_sym;
-    // std::ofstream IEKF_log;
-    // IEKF_log.open ("/home/stavrow/fpv_dataset/results/IEKF_log.txt", std::ios::app);
-    // IEKF_log << features_count << " " << T_preprocess << " " << T_IEKF << " " << T_post << " " << T_fix << " " << T_sym << " " << T_total  <<std::endl;
-    // IEKF_log.close();
+    #ifdef UPDATELOG_PER_FRAME
+      double T_total= T_preprocess + T_IEKF + T_post + T_fix + T_sym;
+      std::ofstream IEKF_log;
+      IEKF_log.open ("/home/stavrow/fpv_dataset/results/IEKF_log.txt", std::ios::app);
+      IEKF_log << features_count << " " << T_preprocess << " " << T_IEKF << " " << T_post << " " << T_fix << " " << T_sym << " " << T_total  <<std::endl;
+      IEKF_log.close();
+    #endif
     return r;
   }
   int performUpdateEKF(mtFilterState& filterState, const mtMeas& meas){
-    // meas_ = meas;
+    bool itered = false;
     if(!useSpecialLinearizationPoint_){
-      // this->jacState(H_,filterState.state_);
+      this->jacState(H_,filterState.state_, itered);
       Hlin_ = H_;
       this->jacNoise(Hn_,filterState.state_);
       this->evalInnovationShort(y_,filterState.state_);
     } else {
       filterState.state_.boxPlus(filterState.difVecLin_,linState_);
-      // this->jacState(H_,linState_);
+      this->jacState(H_,linState_, itered);
       if(useImprovedJacobian_){
         filterState.state_.boxMinusJac(linState_,boxMinusJac_);
         Hlin_ = H_*boxMinusJac_;
@@ -347,7 +368,6 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
       t0 = (double) cv::getTickCount();
     #endif
 
-    // meas_ = meas;
     #ifdef UPDATELOG
       t012 = (double) cv::getTickCount();
     #endif
@@ -402,35 +422,32 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
         #ifdef UPDATELOG
           t42 = (double) cv::getTickCount();
         #endif
-        // if(isCoupled){
-          // C_ = filterState.G_*preupdnoiP_*Hn_.transpose();
-          // Py_ = H_*filterState.cov_*H_.transpose() + Hn_*updnoiP_*Hn_.transpose() + H_*C_ + C_.transpose()*H_.transpose();
-        // } else {
-          // Py_ = H_*filterState.cov_*H_.transpose() + Hn_*updnoiP_*Hn_.transpose();
-        // Py_ = H_*filterState.cov_*H_.transpose() + updnoiP_;
-        Py_ = H_.block(0,zeros,2,2)*filterState.cov_.block(zeros, zeros, 2, 2)*H_.block(0,zeros,2,2).transpose() + updnoiP_;
+        if(isCoupled){
+          C_ = filterState.G_*preupdnoiP_*Hn_.transpose();
+          Py_ = H_*filterState.cov_*H_.transpose() + Hn_*updnoiP_*Hn_.transpose() + H_*C_ + C_.transpose()*H_.transpose();
+        } else {
+           Py_ = H_.template block<2,2>(0,zeros)*filterState.cov_.template block<2,2>(zeros, zeros)*H_.template block<2,2>(0,zeros).transpose() + updnoiP_;
+        }
         #ifdef UPDATELOG
           t5 = (double) cv::getTickCount();
         #endif
 
-      #ifdef CHECK_UPDATE_MATRICES;
-
+      #ifdef CHECK_UPDATE_MATRICES
+        static int total_comp_pyb = 0;
+        total_comp_pyb++;
+        static int total_fail_pyb = 0;
         this->jacNoise(Hn_,linState_);
         bool Py_b = Py_.isApprox( H_*filterState.cov_*H_.transpose() + Hn_*updnoiP_*Hn_.transpose(), 1e-12);
         if (!Py_b)
           {
-            std::cout<<"Py_b is not the same!"<<std::endl;
+            total_fail_pyb++;
+            std::cout<<"Py_b is not the same! || " <<total_fail_pyb<<"/"<<total_comp_pyb<<std::endl;
             std::cout<<Py_ - (H_*filterState.cov_*H_.transpose() + Hn_*updnoiP_*Hn_.transpose())<<std::endl;
             std::cout<<Py_<<std::endl<<std::endl;
             std::cout<<(H_*filterState.cov_*H_.transpose() + Hn_*updnoiP_*Hn_.transpose())<<std::endl<<std::endl;
-          //   std::cout<<zeros<<std::endl<<std::endl;
-            // std::cout<<filterState.cov_<<std::endl<<std::endl;
-          //   std::cout<<Hn_<<std::endl<<std::endl;
-          //   std::cout<<updnoiP_<<std::endl<<std::endl;
           }
       #endif
 
-        // }
         y_.boxMinus(yIdentity_,innVector_);
         #ifdef UPDATELOG
           t6 = (double) cv::getTickCount();
@@ -451,33 +468,38 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
         if(isCoupled){
           K_ = (filterState.cov_*H_.transpose()+C_)*Pyinv_;
         } else {
-          // K_ = filterState.cov_*H_.transpose()*Pyinv_;
           //@todo use template block
-          K_ = filterState.cov_.block(0, zeros, filterState.cov_.rows(), 2)*(H_.block(0,zeros,2,2).transpose()*Pyinv_); // first 2x2 * 2x2 then rowx2 * 2x2? No rounding error?
-          // K_ = filterState.cov_.block(0, zeros, filterState.cov_.rows(), 2)*H_.block(0,zeros,2,2).transpose()*Pyinv_; // first 2x2 * 2x2 then rowx2 * 2x2? No rounding error?
+          const int cov_rows = 21 + 3*ROVIO_NMAXFEATURE;
+          K_ = filterState.cov_.template block<cov_rows, 2>(0, zeros)*(H_.template block<2,2>(0,zeros).transpose()*Pyinv_);
+        }
           
         #ifdef CHECK_UPDATE_MATRICES
+          static int total_comp_K = 0;
+          total_comp_K++;
+          static int total_fail_K = 0;
           bool K_b = K_.isApprox(filterState.cov_*H_.transpose()*Pyinv_, 1e-12);
           if (!K_b)
-            std::cout<<"K_b is not the same!"<<std::endl;
+          {
+            total_fail_K++;
+            std::cout<<"K_b is not the same! || " <<total_fail_K<<"/"<<total_comp_K<<std::endl;
+          }
         #endif
 
-          #ifdef UPDATELOG
-            t9 = (double) cv::getTickCount();
-          #endif
-        }
+        #ifdef UPDATELOG
+          t9 = (double) cv::getTickCount();
+        #endif
         filterState.state_.boxMinus(linState_,difVecLinInv_);
 
-
-        // updateVec_ = -K_*(innVector_+H_*difVecLinInv_)+difVecLinInv_; // includes correction for offseted linearization point, dif must be recomputed (a-b != (-(b-a)))
-        updateVec_ = -K_*(innVector_+H_.block(0,zeros,2,2)*difVecLinInv_.block(zeros, 0, 2, 1))+difVecLinInv_; // includes correction for offseted linearization point, dif must be recomputed (a-b != (-(b-a)))
+        updateVec_ = -K_*(innVector_+H_.template block(0,zeros,2,2)*difVecLinInv_.template block<2,1>(zeros, 0))+difVecLinInv_; // includes correction for offseted linearization point, dif must be recomputed (a-b != (-(b-a)))
         #ifdef CHECK_UPDATE_MATRICES
+          static int total_comp_update = 0;
+          total_comp_update++;
+          static int total_fail_update = 0;
           bool updateVec_b = updateVec_.isApprox(-K_*(innVector_+H_*difVecLinInv_)+difVecLinInv_, 1e-12);
           if (!updateVec_b)
           {
-            std::cout<<"updateVec_b is not the same!"<<std::endl;
-            // std::cout<<H_.block(0,zeros,2,2)<<std::endl<<std::endl;
-            // std::cout<<H_<<std::endl<<std::endl;
+            total_fail_update++;
+            std::cout<<"updateVec_b is not the same! || " <<total_fail_update<<"/"<<total_comp_update<<std::endl;
           }
         #endif
 
@@ -517,7 +539,7 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
         if(bestScore == -1.0 || score < bestScore){
           bestScore = score;
           bestState = linState_;
-          //@todo: this is expensive, maybe just store K_ and Py_
+          //@todo: this is expensive, maybe just store K_ and Py_?
           bestCov = filterState.cov_ - K_*Py_*K_.transpose();
         }
         #ifdef UPDATELOG

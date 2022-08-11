@@ -81,7 +81,6 @@ class OutlierDetectionConcat: public OutlierDetectionBase<S,D>{
       Py.block(S_,0,D_,dI).setZero();
       Py.block(S_,S_,D_,D_).setIdentity();
       H.block(S_,0,D_,H.cols()).setZero();
-      //H.setZero();
     }
   }
   void registerToPropertyHandler(PropertyHandler* mpPropertyHandler, const std::string& str, unsigned int i = 0){

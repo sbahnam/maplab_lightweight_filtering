@@ -178,73 +178,80 @@ class Prediction: public ModelBase<Prediction<FilterState>,typename FilterState:
       filterState.t_ = std::min(itMeas->first,tTarget);
     }
 
-    //@todo: use template block
-    GprenoiP_G = filterState.G_.block(0,12, filterState.G_.rows(),3)*prenoiP_.block(12,12, 3,3)*(filterState.G_.block(0,12, filterState.G_.rows(),3)).transpose();
-    GprenoiP_G.block(0,0,12,12).diagonal() += (filterState.G_.block(0,0,12,12).diagonal().cwiseProduct(prenoiP_.block(0,0,12,12).diagonal())).cwiseProduct(filterState.G_.block(0,0,12,12).diagonal());
-    GprenoiP_G.block(15,15,6,6).diagonal() += (filterState.G_.block(15,15,6,6).diagonal().cwiseProduct(prenoiP_.block(15,15,6,6).diagonal())).cwiseProduct(filterState.G_.block(15,15,6,6).diagonal());
+    const int G_rows = 21 + 3* ROVIO_NMAXFEATURE;
+    GprenoiP_G = filterState.G_.template block<G_rows,3>(0,12)*prenoiP_.template block<3,3>(12,12)*(filterState.G_.template block<G_rows,3>(0,12)).transpose();
+    GprenoiP_G.template block<12,12>(0,0).diagonal() += (filterState.G_.template block<12,12>(0,0).diagonal().cwiseProduct(prenoiP_.template block<12,12>(0,0).diagonal())).cwiseProduct(filterState.G_.template block<12,12>(0,0).diagonal());
+    GprenoiP_G.template block<6,6>(15,15).diagonal() += (filterState.G_.template block<6,6>(15,15).diagonal().cwiseProduct(prenoiP_.template block<6,6>(15,15).diagonal())).cwiseProduct(filterState.G_.template block<6,6>(15,15).diagonal());
    
     for (int i=0; i<25; i++)
     {
-      GprenoiP_G.block(21+3*i,21+3*i, 3,3) += filterState.G_.block(21+3*i, 21+3*i, 3, 3) * prenoiP_.block(21+3*i, 21+3*i, 3, 3) * filterState.G_.block(21+3*i, 21+3*i, 3, 3).transpose();
+      GprenoiP_G.template block<3,3>(21+3*i,21+3*i) += filterState.G_.template block<3,3>(21+3*i, 21+3*i) * prenoiP_.template block<3,3>(21+3*i, 21+3*i) * filterState.G_.template block<3,3>(21+3*i, 21+3*i).transpose();
     }
 
 
-    Fcov.block(0,0, 6,96) = filterState.F_.block(0, 3, 6, 12) * filterState.cov_.block(3, 0, 12, 96);
-    Fcov.block(0,0, 3,96) += filterState.cov_.block(0, 0, 3, 96);
-    Fcov.block(6,0, 15,96) = filterState.cov_.block(6, 0, 15, 96);
-    Fcov.block(12,0, 3,96) += filterState.F_.block(12, 9, 3, 3) * filterState.cov_.block(9, 0, 3, 96);
-    Fcov.block(21,0, 75,96) = filterState.F_.block(21, 3, 75, 3) * filterState.cov_.block(3, 0, 3, 96);
-    Fcov.block(21,0, 75,96) += filterState.F_.block(21, 9, 75, 3) * filterState.cov_.block(9, 0, 3, 96);
-    Fcov.block(21,0, 75,96) += filterState.F_.block(21, 15, 75, 6) * filterState.cov_.block(15, 0, 6, 96);
+    Fcov.template block<6,G_rows>(0,0) = filterState.F_.template block<6,12>(0, 3) * filterState.cov_.template block(3, 0, 12, 96);
+    Fcov.template block<3,G_rows>(0,0) += filterState.cov_.template block<3,96>(0, 0);
+    Fcov.template block<15,G_rows>(6,0) = filterState.cov_.template block<15,96>(6, 0);
+    Fcov.template block<3,G_rows>(12,0) += filterState.F_.template block<3,3>(12, 9) * filterState.cov_.template block<3,G_rows>(9,0);
+    Fcov.template block<75,G_rows>(21,0) = filterState.F_.template block<75,3>(21, 3) * filterState.cov_.template block<3,G_rows>(3,0);
+    Fcov.template block<75,G_rows>(21,0) += filterState.F_.template block<75,3>(21, 9) * filterState.cov_.template block<3,G_rows>(9,0);
+    Fcov.template block<75,G_rows>(21,0) += filterState.F_.template block<75,6>(21, 15) * filterState.cov_.template block<6,G_rows>(15,0);
 
-    for (int i=0; i<25; i++)
+    for (int i=0; i<ROVIO_NMAXFEATURE; i++)
     {
-      Fcov.block(21+3*i,0, 3,96) += filterState.F_.block(21+3*i, 21+3*i, 3, 3) * filterState.cov_.block(21+3*i, 0, 3, 96);
+      Fcov.template block<3,G_rows>(21+3*i,0) += filterState.F_.template block<3,3>(21+3*i, 21+3*i) * filterState.cov_.template block<3,G_rows>(21+3*i, 0);
     }
 
     // // calc Fcov * F
-    // FcovF.block(0,0, 96,3) = Fcov.block(0,0, 96,3);
-    FcovF.block(0,0, 96, 6) =  Fcov.block(0,0, 96, 15) * filterState.F_.block(0, 0, 6, 15).transpose();
-    FcovF.block(0,6, 96, 15) = Fcov.block(0, 6, 96, 15);
-    FcovF.block(0,12, 96, 3) +=  Fcov.block(0,9, 96, 3) * filterState.F_.block(12,9, 3,3).transpose();
-    FcovF.block(0,21, 96, 75) =  Fcov.block(0,3, 96, 3) * filterState.F_.block(21,3, 75,3).transpose();
-    FcovF.block(0,21, 96, 75) +=  Fcov.block(0,9, 96, 3) * filterState.F_.block(21, 9, 75, 3).transpose();
-    FcovF.block(0,21, 96, 75) +=  Fcov.block(0,15, 96, 6) * filterState.F_.block(21, 15, 75, 6).transpose();
+    FcovF.template block<96,6>(0,0) =  Fcov.template block<96,15>(0,0) * filterState.F_.template block<6,15>(0, 0).transpose();
+    FcovF.template block<96,15>(0,6) = Fcov.template block<96,15>(0, 6);
+    FcovF.template block<96,3>(0,12) +=  Fcov.template block<96,3>(0,9) * filterState.F_.template block<3,3>(12,9).transpose();
+    FcovF.template block<96,75>(0,21) =  Fcov.template block<96,3>(0,3) * filterState.F_.template block<75,3>(21,3).transpose();
+    FcovF.template block<96,75>(0,21) +=  Fcov.template block<96,3>(0,9) * filterState.F_.template block<75,3>(21,9).transpose();
+    FcovF.template block<96,75>(0,21) +=  Fcov.template block<96,6>(0,15) * filterState.F_.template block<75,6>(21,15).transpose();
 
 
-    for (int i=0; i<25; i++)
+    for (int i=0; i<ROVIO_NMAXFEATURE; i++)
     {
-      FcovF.block(0, 21+3*i, 96,3) += Fcov.block(0, 21+3*i, 96, 3) * filterState.F_.block(21+3*i, 21+3*i, 3,3).transpose();
+      FcovF.template block<G_rows,3>(0, 21+3*i) += Fcov.template block<G_rows,3>(0, 21+3*i) * filterState.F_.template block<3,3>(21+3*i, 21+3*i).transpose();
     }
 
 
     #ifdef CHECK_COV_PREDICTION_MATRICES
+      static int total_comp = 0;
+      total_comp++;
+      static int total_fail_G = 0;
+      static int total_fail_F = 0;
+      static int total_fail_Pred = 0;
       bool GpG = GprenoiP_G.isApprox(filterState.G_*prenoiP_*filterState.G_.transpose(), 1e-12);
       bool FcF = FcovF.isApprox(filterState.F_*filterState.cov_*filterState.F_.transpose(), 1e-12);
       Eigen::MatrixXd test = FcovF + GprenoiP_G;
       bool predcov =  test.isApprox(filterState.F_*filterState.cov_*filterState.F_.transpose() + filterState.G_*prenoiP_*filterState.G_.transpose(), 1e-12);
       if (!GpG)
       {
-        std::cout<<"Gpg is not the same!"<<std::endl;
+        total_fail_G++;
+        std::cout<<"Gpg is not the same! || " <<total_fail_G<<"/"<<total_comp<<std::endl;
         std::cout<<GprenoiP_G<<std::endl<<std::endl;
         std::cout<<filterState.G_*prenoiP_*filterState.G_.transpose()<<std::endl<<std::endl;
 
       }
       if (!FcF)
       {
-        std::cout<<"FcF is not the same!"<<std::endl;
+        total_fail_F++;
+        std::cout<<"FcF is not the same! || " <<total_fail_F<<"/"<<total_comp<<std::endl;
         std::cout<<FcovF - filterState.F_*filterState.cov_*filterState.F_.transpose()<<std::endl<<std::endl;
         std::cout<<filterState.F_<<std::endl<<std::endl;
       } 
 
-      if (!predcov) std::cout<<"Prediction cov not the same!"<<std::endl;
+      if (!predcov)
+      {
+        total_fail_Pred++;
+        std::cout<<"Prediction cov not the same! || " <<total_fail_Pred<<"/"<<total_comp<<std::endl;
+      }
 
     #endif
 
 
-    // filterState.cov_ = filterState.F_*filterState.cov_*filterState.F_.transpose() + filterState.G_*prenoiP_*filterState.G_.transpose();
-    // filterState.cov_ = FcovF + filterState.G_*prenoiP_*filterState.G_.transpose();
-    //  filterState.cov_ = filterState.F_*filterState.cov_*filterState.F_.transpose() + GprenoiP_G;
     filterState.cov_ = FcovF +GprenoiP_G;
 
 
