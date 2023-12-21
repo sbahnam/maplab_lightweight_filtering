@@ -14,7 +14,6 @@
 #include <Eigen/Dense>
 #include <iostream>
 #include "kindr/Core"
-#include "lightweight_filtering/PropertyHandler.hpp"
 
 typedef kindr::RotationQuaternionPD QPD;
 typedef kindr::RotationMatrixPD MPD;
@@ -34,12 +33,5 @@ inline M3D Lmat (const V3D& a) {
   return kindr::getJacobianOfExponentialMap(a);
 }
 
-namespace LWF{
-  enum FilteringMode{
-    ModeEKF,
-    ModeUKF,
-    ModeIEKF
-  };
-}
 
 #endif /* LWF_COMMON_HPP_ */

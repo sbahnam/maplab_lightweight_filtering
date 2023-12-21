@@ -8,8 +8,6 @@
 #ifndef LWF_CoordinateTransform_HPP_
 #define LWF_CoordinateTransform_HPP_
 
-#include "lightweight_filtering/common.hpp"
-#include "lightweight_filtering/ModelBase.hpp"
 
 namespace LWF{
 
@@ -106,17 +104,17 @@ class CoordinateTransform: public ModelBase<CoordinateTransform<Input,Output>,Ou
     }
     return false;
   }
-  bool testTransformJac(double d = 1e-6,double th = 1e-6){
-    mtInputTuple inputs;
-    unsigned int s = 1;
-    const double dt = 0.1;
-    this->setRandomInputs(inputs,s);
-    return this->testJacs(inputs,d,th,dt);
-  }
-  bool testTransformJac(const mtInput& input, double d = 1e-6,double th = 1e-6){
-    const double dt = 0.1;
-    return this->testJacs(std::forward_as_tuple(input),d,th,dt);
-  }
+  // bool testTransformJac(double d = 1e-6,double th = 1e-6){
+  //   mtInputTuple inputs;
+  //   unsigned int s = 1;
+  //   const double dt = 0.1;
+  //   this->setRandomInputs(inputs,s);
+  //   return this->testJacs(inputs,d,th,dt);
+  // }
+  // bool testTransformJac(const mtInput& input, double d = 1e-6,double th = 1e-6){
+  //   const double dt = 0.1;
+  //   return this->testJacs(std::forward_as_tuple(input),d,th,dt);
+  // }
 };
 
 }

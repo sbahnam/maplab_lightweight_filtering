@@ -8,7 +8,6 @@
 #ifndef LWF_STATE_HPP_
 #define LWF_STATE_HPP_
 
-#include "lightweight_filtering/common.hpp"
 #include "lightweight_filtering/PropertyHandler.hpp"
 #include <random>
 

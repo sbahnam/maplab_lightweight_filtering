@@ -8,8 +8,6 @@
 #ifndef LWF_OUTLIERDETECTION_HPP_
 #define LWF_OUTLIERDETECTION_HPP_
 
-#include "lightweight_filtering/common.hpp"
-#include "lightweight_filtering/PropertyHandler.hpp"
 
 namespace LWF{
 

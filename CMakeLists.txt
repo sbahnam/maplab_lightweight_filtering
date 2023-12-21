@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required (VERSION 3.22.1)
 project(lightweight_filtering)
 add_definitions(-std=c++11)
 

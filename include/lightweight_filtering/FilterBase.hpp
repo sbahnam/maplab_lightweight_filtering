@@ -8,7 +8,6 @@
 #ifndef LWF_FilterBase_HPP_
 #define LWF_FilterBase_HPP_
 
-#include "lightweight_filtering/common.hpp"
 #include "lightweight_filtering/PropertyHandler.hpp"
 
 namespace LWF{
@@ -69,22 +68,22 @@ class MeasurementTimeline{
   }
 };
 
-template<typename Prediction,typename... Updates>
+template<typename Prediction,typename Updates>
 class FilterBase: public PropertyHandler{
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   typedef Prediction mtPrediction;
   typedef typename mtPrediction::mtState mtState;
   static const unsigned int D_ = mtState::D_;
-  static const int nUpdates_ = sizeof...(Updates);
+  static const int nUpdates_ = 1;//sizeof...(Updates);
   typedef typename mtPrediction::mtFilterState mtFilterState;
   mtFilterState safe_;
   mtFilterState front_;
   mtFilterState init_;
   MeasurementTimeline<typename mtPrediction::mtMeas> predictionTimeline_;
-  std::tuple<MeasurementTimeline<typename Updates::mtMeas>...> updateTimelineTuple_;
+  std::tuple<MeasurementTimeline<typename Updates::mtMeas>> updateTimelineTuple_;
   mtPrediction mPrediction_;
-  typedef std::tuple<Updates...> mtUpdates;
+  typedef std::tuple<Updates> mtUpdates;
   mtUpdates mUpdates_;
   double safeWarningTime_;
   double frontWarningTime_;
@@ -182,6 +181,7 @@ class FilterBase: public PropertyHandler{
     if(front_.t_<=nextSafeTime && !gotFrontWarning_ && front_.t_>safe_.t_){
       safe_ = front_;
     }
+    // do the update
     update(safe_,nextSafeTime);
     clean(safe_.t_);
     safeWarningTime_ = safe_.t_;
@@ -211,22 +211,10 @@ class FilterBase: public PropertyHandler{
         break; // Don't go further if there is no update available
       }
       int r = 0;
-      if(filterState.usePredictionMerge_){
-        r = mPrediction_.predictMerged(filterState,tNext,predictionTimeline_.measMap_);
-        if(r!=0) std::cout << "Error during predictMerged: " << r << std::endl;
-        logCountMerPre_++;
-      } else {
-        while(filterState.t_ < tNext && (predictionTimeline_.itMeas_ = predictionTimeline_.measMap_.upper_bound(filterState.t_)) != predictionTimeline_.measMap_.end()){
-          r = mPrediction_.performPrediction(filterState,predictionTimeline_.itMeas_->second,std::min(predictionTimeline_.itMeas_->first,tNext)-filterState.t_);
-          if(r!=0) std::cout << "Error during performPrediction: " << r << std::endl;
-          logCountRegPre_++;
-        }
-      }
-      if(filterState.t_ < tNext){
-        r = mPrediction_.performPrediction(filterState,tNext-filterState.t_);
-        if(r!=0) std::cout << "Error during performPrediction: " << r << std::endl;
-        logCountBadPre_++;
-      }
+      r = mPrediction_.predictMergedEKF(filterState,tNext,predictionTimeline_.measMap_);
+      if(r!=0) std::cout << "Error during predictMerged: " << r << std::endl;
+      logCountMerPre_++;
+
       doAvailableUpdates(filterState,tNext);
     }
   }

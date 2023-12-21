@@ -14,10 +14,7 @@
 // #define UPDATELOG_PER_FRAME
 #define CHECK_UPDATE_MATRICES
 
-#include "lightweight_filtering/common.hpp"
 #include "lightweight_filtering/ModelBase.hpp"
-#include "lightweight_filtering/PropertyHandler.hpp"
-#include "lightweight_filtering/SigmaPoints.hpp"
 #include "lightweight_filtering/OutlierDetection.hpp"
 #include <list>
 #include <Eigen/StdVector>
@@ -67,13 +64,6 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
   Eigen::MatrixXd Pyx_;
   mutable typename mtState::mtDifVec difVecLinInv_;
 
-  SigmaPoints<mtState,2*mtState::D_+1,2*(mtState::D_+mtNoise::D_)+1,0> stateSigmaPoints_;
-  SigmaPoints<mtNoise,2*mtNoise::D_+1,2*(mtState::D_+mtNoise::D_)+1,2*mtState::D_> stateSigmaPointsNoi_;
-  SigmaPoints<mtInnovation,2*(mtState::D_+mtNoise::D_)+1,2*(mtState::D_+mtNoise::D_)+1,0> innSigmaPoints_;
-  SigmaPoints<mtNoise,2*(mtNoise::D_+mtPredictionNoise::D_)+1,2*(mtState::D_+mtNoise::D_+mtPredictionNoise::D_)+1,2*(mtState::D_)> coupledStateSigmaPointsNoi_;
-  SigmaPoints<mtInnovation,2*(mtState::D_+mtNoise::D_+mtPredictionNoise::D_)+1,2*(mtState::D_+mtNoise::D_+mtPredictionNoise::D_)+1,0> coupledInnSigmaPoints_;
-  SigmaPoints<LWF::VectorElement<mtState::D_>,2*mtState::D_+1,2*mtState::D_+1,0> updateVecSP_;
-  SigmaPoints<mtState,2*mtState::D_+1,2*mtState::D_+1,0> posterior_;
   double alpha_;
   double beta_;
   double kappa_;
@@ -108,8 +98,7 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
     useImprovedJacobian_ = false;
     yIdentity_.setIdentity();
     updateVec_.setIdentity();
-    refreshNoiseSigmaPoints();
-    refreshUKFParameter();
+    // refreshUKFParameter();
     mtNoise n;
     n.setIdentity();
     n.registerCovarianceToPropertyHandler_(updnoiP_,this,"UpdateNoise.");
@@ -123,25 +112,8 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
     disablePreAndPostProcessingWarning_ = false;
   };
   virtual ~Update(){};
-  void refreshNoiseSigmaPoints(){
-    if(noiP_ != updnoiP_){
-      noiP_ = updnoiP_;
-      stateSigmaPointsNoi_.computeFromZeroMeanGaussian(noiP_);
-    }
-  }
-  void refreshUKFParameter(){
-    stateSigmaPoints_.computeParameter(alpha_,beta_,kappa_);
-    innSigmaPoints_.computeParameter(alpha_,beta_,kappa_);
-    coupledInnSigmaPoints_.computeParameter(alpha_,beta_,kappa_);
-    updateVecSP_.computeParameter(alpha_,beta_,kappa_);
-    posterior_.computeParameter(alpha_,beta_,kappa_);
-    stateSigmaPointsNoi_.computeParameter(alpha_,beta_,kappa_);
-    stateSigmaPointsNoi_.computeFromZeroMeanGaussian(noiP_);
-    coupledStateSigmaPointsNoi_.computeParameter(alpha_,beta_,kappa_);
-  }
   void refreshProperties(){
     refreshPropertiesCustom();
-    refreshUKFParameter();
   }
   virtual void refreshPropertiesCustom(){}
   void eval_(mtInnovation& x, const mtInputTuple& inputs, double dt) const{
@@ -214,28 +186,13 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
       if(!isFinished){
         #ifdef UPDATELOG_PER_FRAME
           features_count++;
+          t3 = (double) cv::getTickCount();
         #endif
-        switch(filterState.mode_){
-          case ModeEKF:
-            r = performUpdateEKF(filterState,meas);
-            break;
-          case ModeUKF:
-            r = performUpdateUKF(filterState,meas);
-            break;
-          case ModeIEKF:
-            #ifdef UPDATELOG_PER_FRAME
-              t3 = (double) cv::getTickCount();
-            #endif
-            r = performUpdateIEKF(filterState,meas);
-            #ifdef UPDATELOG_PER_FRAME
-              t4 = (double) cv::getTickCount();
-              T_IEKF += (t4-t3)/cv::getTickFrequency()*1000;
-            #endif
-            break;
-          default:
-            r = performUpdateEKF(filterState,meas);
-            break;
-        }
+        r = performUpdateIEKF(filterState,meas);
+        #ifdef UPDATELOG_PER_FRAME
+          t4 = (double) cv::getTickCount();
+          T_IEKF += (t4-t3)/cv::getTickFrequency()*1000;
+        #endif
       }
       #ifdef UPDATELOG_PER_FRAME
         const double t5 = (double) cv::getTickCount();
@@ -264,55 +221,6 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
       IEKF_log.close();
     #endif
     return r;
-  }
-  int performUpdateEKF(mtFilterState& filterState, const mtMeas& meas){
-    bool itered = false;
-    if(!useSpecialLinearizationPoint_){
-      this->jacState(H_,filterState.state_, itered);
-      Hlin_ = H_;
-      this->jacNoise(Hn_,filterState.state_);
-      this->evalInnovationShort(y_,filterState.state_);
-    } else {
-      filterState.state_.boxPlus(filterState.difVecLin_,linState_);
-      this->jacState(H_,linState_, itered);
-      if(useImprovedJacobian_){
-        filterState.state_.boxMinusJac(linState_,boxMinusJac_);
-        Hlin_ = H_*boxMinusJac_;
-      } else {
-        Hlin_ = H_;
-      }
-      this->jacNoise(Hn_,linState_);
-      this->evalInnovationShort(y_,linState_);
-    }
-
-    if(isCoupled){
-      C_ = filterState.G_*preupdnoiP_*Hn_.transpose();
-      Py_ = Hlin_*filterState.cov_*Hlin_.transpose() + Hn_*updnoiP_*Hn_.transpose() + Hlin_*C_ + C_.transpose()*Hlin_.transpose();
-    } else {
-      Py_ = Hlin_*filterState.cov_*Hlin_.transpose() + Hn_*updnoiP_*Hn_.transpose();
-    }
-    y_.boxMinus(yIdentity_,innVector_);
-
-    // Outlier detection // TODO: adapt for special linearization point
-    outlierDetection_.doOutlierDetection(innVector_,Py_,Hlin_);
-    Pyinv_.setIdentity();
-    Py_.llt().solveInPlace(Pyinv_);
-
-    // Kalman Update
-    if(isCoupled){
-      K_ = (filterState.cov_*Hlin_.transpose()+C_)*Pyinv_;
-    } else {
-      K_ = filterState.cov_*Hlin_.transpose()*Pyinv_;
-    }
-    filterState.cov_ = filterState.cov_ - K_*Py_*K_.transpose();
-    if(!useSpecialLinearizationPoint_){
-      updateVec_ = -K_*innVector_;
-    } else {
-      filterState.state_.boxMinus(linState_,difVecLinInv_);
-      updateVec_ = -K_*(innVector_+H_*difVecLinInv_); // includes correction for offseted linearization point, dif must be recomputed (a-b != (-(b-a)))
-    }
-    filterState.state_.boxPlus(updateVec_,filterState.state_);
-    return 0;
   }
   int performUpdateIEKF(mtFilterState& filterState, const mtMeas& meas){
     int zeros;
@@ -591,66 +499,6 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
       update_log.close();
     #endif
     return 0;
-  }
-  int performUpdateUKF(mtFilterState& filterState, const mtMeas& meas){
-    // meas_ = meas;
-    handleUpdateSigmaPoints<isCoupled>(filterState);
-    y_.boxMinus(yIdentity_,innVector_);
-
-    outlierDetection_.doOutlierDetection(innVector_,Py_,Pyx_);
-    Pyinv_.setIdentity();
-    Py_.llt().solveInPlace(Pyinv_);
-
-    // Kalman Update
-    K_ = Pyx_.transpose()*Pyinv_;
-    filterState.cov_ = filterState.cov_ - K_*Py_*K_.transpose();
-    updateVec_ = -K_*innVector_;
-
-    // Adapt for proper linearization point
-    updateVecSP_.computeFromZeroMeanGaussian(filterState.cov_);
-    for(unsigned int i=0;i<2*mtState::D_+1;i++){
-      filterState.state_.boxPlus(updateVec_+updateVecSP_(i).v_,posterior_(i));
-    }
-    posterior_.getMean(filterState.state_);
-    posterior_.getCovarianceMatrix(filterState.state_,filterState.cov_);
-    return 0;
-  }
-  template<bool IC = isCoupled, typename std::enable_if<(IC)>::type* = nullptr>
-  void handleUpdateSigmaPoints(mtFilterState& filterState){
-    coupledStateSigmaPointsNoi_.extendZeroMeanGaussian(filterState.stateSigmaPointsNoi_,updnoiP_,preupdnoiP_);
-    for(unsigned int i=0;i<coupledInnSigmaPoints_.L_;i++){
-      this->evalInnovation(coupledInnSigmaPoints_(i),filterState.stateSigmaPointsPre_(i),coupledStateSigmaPointsNoi_(i));
-    }
-    coupledInnSigmaPoints_.getMean(y_);
-    coupledInnSigmaPoints_.getCovarianceMatrix(y_,Py_);
-    coupledInnSigmaPoints_.getCovarianceMatrix(filterState.stateSigmaPointsPre_,Pyx_);
-  }
-  template<bool IC = isCoupled, typename std::enable_if<(!IC)>::type* = nullptr>
-  void handleUpdateSigmaPoints(mtFilterState& filterState){
-    refreshNoiseSigmaPoints();
-    stateSigmaPoints_.computeFromGaussian(filterState.state_,filterState.cov_);
-    for(unsigned int i=0;i<innSigmaPoints_.L_;i++){
-      this->evalInnovation(innSigmaPoints_(i),stateSigmaPoints_(i),stateSigmaPointsNoi_(i));
-    }
-    innSigmaPoints_.getMean(y_);
-    innSigmaPoints_.getCovarianceMatrix(y_,Py_);
-    innSigmaPoints_.getCovarianceMatrix(stateSigmaPoints_,Pyx_);
-  }
-  bool testUpdateJacs(double d = 1e-6,double th = 1e-6){
-    mtState state;
-    mtMeas meas;
-    unsigned int s = 1;
-    state.setRandom(s);
-    meas.setRandom(s);
-    return testUpdateJacs(state,meas,d,th);
-  }
-  bool testUpdateJacs(const mtState& state, const mtMeas& meas, double d = 1e-6,double th = 1e-6){
-    mtInputTuple inputs;
-    const double dt = 1.0;
-    std::get<0>(inputs) = state;
-    std::get<1>(inputs).setIdentity(); // Noise is always set to zero for Jacobians
-    // meas_ = meas;
-    return this->testJacs(inputs,d,th,dt);
   }
 };
 
