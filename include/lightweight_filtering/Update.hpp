@@ -362,7 +362,15 @@ class Update: public ModelBase<Update<Innovation,FilterState,Meas,Noise,OutlierD
         #endif
 
         // Outlier detection
-        outlierDetection_.doOutlierDetection(innVector_,Py_,H_);
+        bool outlier_return;
+        outlierDetection_.doOutlierDetection(innVector_,Py_,H_, outlier_return);
+        if (outlier_return)
+        {
+          filterState.state_.boxMinus(linState_,difVecLinInv_);
+          hasConverged_ = difVecLinInv_.norm()<=updateVecNormTermination_ ;//|| innVector_.norm() < 10.0; 
+
+          continue;
+        }
         #ifdef UPDATELOG
           t7 = (double) cv::getTickCount();
         #endif

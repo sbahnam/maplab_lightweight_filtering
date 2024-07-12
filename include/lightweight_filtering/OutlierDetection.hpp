@@ -69,12 +69,14 @@ class OutlierDetectionConcat: public OutlierDetectionBase<S,D>{
   OutlierDetectionConcat(){};
   virtual ~OutlierDetectionConcat(){};
   template<int dI>
-  void doOutlierDetection(const Eigen::Matrix<double,dI,1>& innVector,Eigen::MatrixXd& Py,Eigen::MatrixXd& H){
+  void doOutlierDetection(const Eigen::Matrix<double,dI,1>& innVector,Eigen::MatrixXd& Py,Eigen::MatrixXd& H, bool& outlier_return){
     static_assert(dI>=S+D,"Outlier detection out of range");
     check(innVector,Py);
     outlier_ = outlier_ & enabled_;
     sub_.doOutlierDetection(innVector,Py,H);
+    outlier_return = false;
     if(outlier_){
+      outlier_return = true;
       Py.block(0,S_,dI,D_).setZero();
       Py.block(S_,0,D_,dI).setZero();
       Py.block(S_,S_,D_,D_).setIdentity();
